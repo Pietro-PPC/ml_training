@@ -1,0 +1,3 @@
+/home/pips/ufpr/tcc/ml_training/test/CMakeFiles/DisplayImage.dir
+/home/pips/ufpr/tcc/ml_training/test/CMakeFiles/edit_cache.dir
+/home/pips/ufpr/tcc/ml_training/test/CMakeFiles/rebuild_cache.dir

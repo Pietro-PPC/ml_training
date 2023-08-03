@@ -1,0 +1,3 @@
+/home/pips/ufpr/tcc/ml_training/CMakeFiles/main.dir
+/home/pips/ufpr/tcc/ml_training/CMakeFiles/edit_cache.dir
+/home/pips/ufpr/tcc/ml_training/CMakeFiles/rebuild_cache.dir
