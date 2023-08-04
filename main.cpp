@@ -9,46 +9,47 @@
 #include "include/rapidxml-1.13/rapidxml.hpp"
 
 namespace fs = std::filesystem;
-namespace rx = rapidxml;
+using namespace rapidxml;
+using namespace std;
 
 void lsDir(const std::string &path){
     for (const auto &entry : fs::directory_iterator(path))
         std::cout << entry.path() << std::endl;
 }
 
-std::string getFileString(const std::string &fname){
-    std::ifstream fstr; fstr.open(fname);
-    
-    std::string ret = "";
-    std::string buf;
+void print_attributes(const xml_node<>* const node){
+    for (xml_attribute<> *attr = node->first_attribute();
+        attr; attr = attr->next_attribute()){
 
-    while (fstr >> buf)
-        ret += buf;
-
-    return ret;
+        cout << "\t" << attr->name() << " = " << attr->value() << "\n";
+    }
 }
 
 int main(){
     const std::string DS_PATH = "../PKLot/PKLot/";
-    
-    // PARTE 1: Mostrar Imagem
-    const std::string img_sample = DS_PATH + "UFPR04/Cloudy/2012-12-12/2012-12-12_10_00_05.jpg";
+    const std::string xml_sample = DS_PATH + "PUCPR/Cloudy/2012-09-12/2012-09-12_06_10_30.xml";
 
-    cv::Mat img;
-    img = cv::imread(img_sample, cv::IMREAD_COLOR);
+    std::ifstream fname(xml_sample);
+    std::vector<char> content( (istreambuf_iterator<char>(fname)), istreambuf_iterator<char>());
+    xml_document<> doc; doc.parse<0>(&content[0]);    // 0 means default parse flags
 
-    if (!img.data){
-        std::cerr << "No image data" << std::endl;
-        return 1;
+    xml_node<> *root = doc.first_node();
+
+    xml_node<> *space = root->first_node();
+    for(; space; space = space->next_sibling()){
+        cout << "Node: " << space->name() << "\n";
+        print_attributes(space);
+
+        xml_node<> *contour = space->first_node("contour");
+        xml_node<> *point = contour->first_node();
+        for (; point; point = point->next_sibling())
+            print_attributes(point);
+        
+
+        std::cout << std::endl;
     }
 
-    cv::imshow("Parking Lot", img);
-    cv::waitKey(0);
-
-    // PARTE 2: Ler XML
-    const std::string xml_sample = DS_PATH + "UFPR04/Cloudy/2012-12-12/2012-12-12_10_00_05.xml";
-    
-    std::cout << getFileString(xml_sample) << std::endl;
+    // print_attributes(node);
 
     return 0;
 }
