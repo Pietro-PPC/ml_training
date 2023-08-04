@@ -40,10 +40,11 @@ int main(){
 
         xml::xml_node<> *contour = space->first_node("contour");
         xml::xml_node<> *point = contour->first_node();
-        for (; point; point = point->next_sibling()){
-            unsigned int x = atoi(point->first_attribute("x")->value());
-            unsigned int y = atoi(point->first_attribute("y")->value());
-            std::cout << "\t" << x << " " << y << std::endl;
+        std::pair<unsigned int, unsigned int> rect[4];
+        for (int it = 0; point && it < 4; point = point->next_sibling(), ++it){
+            rect[it].first  = atoi(point->first_attribute("x")->value());
+            rect[it].second = atoi(point->first_attribute("y")->value());
+            std::cout << "\t" << rect[it].first << " " << rect[it].second << std::endl;
         }
 
         std::cout << std::endl;
