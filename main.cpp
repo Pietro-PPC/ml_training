@@ -65,8 +65,6 @@ int main(){
         if (fs::is_directory(dirEnt) || dirEnt.path().extension() != ".jpg") continue;
 
         // get and create directories
-        std::cout << "Processing " << dirEnt << " ..." << std::endl;
-
         std::string file_pref{dirEnt.path().stem()};
         std::string cur_dir{dirEnt.path().parent_path()};
         cur_dir.erase(0, DS_PATH.size()); cur_dir += "/";
@@ -83,7 +81,12 @@ int main(){
         // read image
         cv::Mat cv_img = cv::imread(img_input);
 
-        pt::ptree tree; 
+        pt::ptree tree;
+
+        if (!fs::exists(xml_input)){
+            std::cout << "File " << xml_input << " not found." << std::endl;
+            continue;
+        }
         read_xml(xml_input, tree);
         pt::ptree::const_assoc_iterator parking = tree.find("parking");
         pt::ptree::const_iterator parking_it = parking->second.begin();
@@ -95,10 +98,8 @@ int main(){
             try{
                 occ = parking_it->second.get<int>("<xmlattr>.occupied");
             } catch(pt::ptree_error &exc){
-                std::cerr << "id " << id << " of " << xml_input << " not processed" << std::endl;
+                std::cerr << "id " << id << " of " << xml_input << " not processed\n";
             }
-
-            // std::cout << "\r\tid = " << id << std::flush;
 
             cv::RotatedRect rotRect;
 
