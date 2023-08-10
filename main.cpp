@@ -8,10 +8,14 @@
 #include <opencv2/highgui.hpp>
 #include <opencv2/opencv.hpp>
 
-#include "include/rapidxml-1.13/rapidxml.hpp"
+#include <boost/property_tree/xml_parser.hpp>
+#include <boost/property_tree/ptree.hpp>
+#include <boost/property_tree/exceptions.hpp>
 
+
+
+namespace pt = boost::property_tree;
 namespace fs = std::filesystem;
-namespace xml = rapidxml;
 
 void lsDir(const std::string &path){
     for (const auto &entry : fs::directory_iterator(path))
@@ -27,14 +31,6 @@ void joinStrs(std::string &res, const std::vector<std::string> &strs, const int 
     res = "";
     for(int i = 0; i < uBound; ++i)
         res += strs[i] + sep;
-}
-
-xml::xml_document<> *getXmlDoc(const std::string &fname){
-    std::ifstream fnameStream(fname);
-    std::vector<char> fContent( (std::istreambuf_iterator<char>(fnameStream)), std::istreambuf_iterator<char>());
-    xml::xml_document<> *doc = new xml::xml_document{};
-    doc->parse<0>(&fContent[0]);    // 0 means default parse flag
-    return doc;
 }
 
 void cropRotatedRect(const cv::Mat &img, cv::Mat &croppedImg, const cv::RotatedRect &rotRect){
@@ -61,12 +57,14 @@ void cropRotatedRect(const cv::Mat &img, cv::Mat &croppedImg, const cv::RotatedR
 
 int main(){
 
-    const std::string DS_PATH = "../PKLot/PKLot/UFPR05";
-    const std::string DS_SEG_PATH = "../PKLot/MyPKLotSeg/UFPR05";
+    const std::string DS_PATH = "../PKLot/PKLot/";
+    const std::string DS_SEG_PATH = "../PKLot/MyPKLotSeg/";
+    // ofstream logFile("logs.txt");
 
     for (const auto &dirEnt : fs::recursive_directory_iterator(DS_PATH)){
         if (fs::is_directory(dirEnt) || dirEnt.path().extension() != ".jpg") continue;
 
+        // get and create directories
         std::cout << "Processing " << dirEnt << " ..." << std::endl;
 
         std::string file_pref{dirEnt.path().stem()};
@@ -82,31 +80,36 @@ int main(){
         const std::string img_input = DS_PATH + cur_dir + file_pref + ".jpg";
         const std::string xml_input = DS_PATH + cur_dir + file_pref + ".xml";
 
+        // read image
         cv::Mat cv_img = cv::imread(img_input);
 
-        xml::xml_document<> *doc = getXmlDoc(xml_input);
-        xml::xml_node<> *parking = doc->first_node("parking");
-        xml::xml_node<> *space = parking->first_node();
+        pt::ptree tree; 
+        read_xml(xml_input, tree);
+        pt::ptree::const_assoc_iterator parking = tree.find("parking");
+        pt::ptree::const_iterator parking_it = parking->second.begin();
+        while (parking_it->first != "space") parking_it++;
 
-        for(; space; space = space->next_sibling()){
-            xml::xml_node<> *rect_node = space->first_node("rotatedRect");
-            
-            int id = atoi(space->first_attribute("id")->value());
-            int occ = atoi(space->first_attribute("occupied")->value());
+        for (; parking_it != parking->second.end(); ++parking_it){
+            int occ, id = parking_it->second.get<int>("<xmlattr>.id");
+
+            try{
+                occ = parking_it->second.get<int>("<xmlattr>.occupied");
+            } catch(pt::ptree_error &exc){
+                std::cerr << "id " << id << " of " << xml_input << " not processed" << std::endl;
+            }
+
+            // std::cout << "\r\tid = " << id << std::flush;
 
             cv::RotatedRect rotRect;
 
             // get xml data
-            xml::xml_node<> *center_node = rect_node->first_node("center");
-            rotRect.center.x = atof(center_node->first_attribute("x")->value());
-            rotRect.center.y = atof(center_node->first_attribute("y")->value());
+            rotRect.center.x = parking_it->second.get<float>("rotatedRect.center.<xmlattr>.x");
+            rotRect.center.y = parking_it->second.get<float>("rotatedRect.center.<xmlattr>.y");
+            
+            rotRect.size.width = parking_it->second.get<float>("rotatedRect.size.<xmlattr>.w");
+            rotRect.size.height = parking_it->second.get<float>("rotatedRect.size.<xmlattr>.h");
 
-            xml::xml_node<> *size_node = rect_node->first_node("size");
-            rotRect.size.width  = atof(size_node->first_attribute("w")->value());
-            rotRect.size.height = atof(size_node->first_attribute("h")->value());
-
-            xml::xml_node<> *angle_node = rect_node->first_node("angle");
-            rotRect.angle = atof(angle_node->first_attribute("d")->value());
+            rotRect.angle = parking_it->second.get<float>("rotatedRect.angle.<xmlattr>.d");
 
             // Crop rectangle
             cv::Mat cropped_img;
@@ -118,8 +121,9 @@ int main(){
 
             cv::imwrite(fPath, cropped_img);
         }
+        // std::cout << "\nImages written" << std::endl;
 
-        delete doc;
+        // delete doc;
     }
 
     return 0;
