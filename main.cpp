@@ -111,12 +111,39 @@ void segmentImgs(const std::string &src_path, const std::string &dest_path){
 
 }
 
+cv::Mat *getLBP(const cv::Mat &img){
+    // cv::Mat *lbp_img{new cv::Mat::zeros(cv::Size{img.size[0]-2, img.size[1]-2}, cv::CV_8UC1)};
+    cv::Mat *lbp_img{ new cv::Mat{ cv::Mat::zeros(cv::Size(img.cols-2, img.rows-2), CV_8UC1)} };
+
+    std::vector<int> seqi{-1,0,1,1,1,0,-1,-1};
+    std::vector<int> seqj{1,1,1,0,-1,-1,-1,0};
+
+    for (unsigned int i{1}; i < img.size[0]-1; ++i){
+        for (unsigned int j{1}; j < img.size[1]-1; ++j){
+            unsigned char lbp{0};
+            for (unsigned int k = 0; k < seqi.size(); ++k)
+                lbp |= ( img.at<uchar>(i,j) >= img.at<uchar>(i+seqi[k],j+seqj[k]) ? 1 : 0 ) << k;
+            lbp_img->at<uchar>(i-1,j-1) = lbp;
+        }
+    }
+    
+    return lbp_img;
+}
+
 int main(){
+    // const std::string sample_img_path{"data/PKLot/MyPKLotSeg/PUCPR/Cloudy/2012-09-12/Empty/2012-09-12_06_05_16#001.jpg"};
+    // const std::string sample_pklot_path{"data/PKLot/PKLot/PUCPR/Cloudy/2012-09-12/2012-09-12_06_05_16.jpg"}; 
+    const std::string man{"data/samples/man.png"};
 
-    const std::string src = "data/PKLot/PKLot/PUCPR/Cloudy/2012-09-12/";
-    const std::string dest = "data/PKLot/MyPKLotSeg/PUCPR/Cloudy/2012-09-12/";
+    cv::Mat sample_img{cv::imread(man)};
+    cv::cvtColor(sample_img, sample_img, cv::COLOR_BGR2GRAY);
+    
+    cv::Mat *lbp{ getLBP(sample_img)};
 
-    segmentImgs(src, dest);
+    cv::imshow("image", *lbp);
+    cv::waitKey(0);
+
+    delete lbp;
 
     return 0;
 }
