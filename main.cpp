@@ -150,9 +150,22 @@ void appendHistogram(std::ofstream &fout, const cv::Mat &lbpHist, pkSpaceClass c
     pkLot pla, weather w){
     
     for (int i = 0; i < lbpHist.size[0]; ++i) 
-        fout << lbpHist.at<unsigned int>(i) << ",";
+        fout << lbpHist.at<int>(i) << ",";
 
     fout << cla << "," << pla << "," << w << "\n";
+}
+
+void getHistogram(cv::Mat &hist, const cv::Mat &img){
+    const int histSize[] = {256};
+    const float histRange1[] = {0,256};
+    const float *histRange[] = {histRange1};
+    const int channels[] = {0};
+
+    hist = cv::Mat::zeros(256, 1, CV_8UC1);
+    // std::cout << int(hist.at<unsigned short int>(2)) <<  " oi " << std::endl;
+
+    cv::calcHist(&img, 1, channels, cv::Mat(), hist, 1, histSize, histRange, true, false);
+    // std::cout << int(hist.at<unsigned short int>(2)) <<  " oi " << std::endl;
 }
 
 int main(){
@@ -164,15 +177,15 @@ int main(){
     cv::Mat sample_img{cv::imread(man)};
     cv::cvtColor(sample_img, sample_img, cv::COLOR_BGR2GRAY);
     
+    cv::Mat lbpHist;
     cv::Mat *lbp{ getLBP(sample_img)};
 
-    const int histSize[] = {256};
-    const float histRange1[] = {0.0,256.0};
-    const float *histRange[] = {histRange1};
-    const int channels[] = {0};
+    cv::imshow("lbp", *lbp);
+    cv::waitKey(0);
 
-    cv::Mat lbpHist;
-    cv::calcHist(lbp, 1, channels, cv::Mat(), lbpHist, 1, histSize, histRange, true, false);
+    getHistogram(lbpHist, *lbp);
+
+    std::cout << lbpHist << std::endl;
 
     std::ofstream fout;
     fout.open(csvOut);
