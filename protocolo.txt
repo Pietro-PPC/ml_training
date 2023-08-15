@@ -1,0 +1,19 @@
+Para refletir o comportamento do modelo no mundo real, dados do mesmo dia e local não podem estar ao mesmo tempo no 
+conjunto de treino e teste, pois dessa forma é possível que imagens quase idênticas estejam em ambos, visto que um carro
+pode ficar estacionado por uma grande quantidade de tempo em um mesmo local.
+
+No mundo real, o modelo também seria implementado em um local diferente dos locais de treino. Dessa forma, o conjunto
+de testes compreenderá um local que não foi usado para treinar o modelo. Minha ideia é alternar entre as três combinações
+de dois locais para treino e um para teste possíveis.
+
+Por fim, também serão balanceadas em 50-50 as quantidades de vagas vazias e ocupadas de cada uma das categorias de tempo
+(ensolarado, nublado e chuvoso).
+
+Para isso, os seguintes passos serão seguidos:
+1. Iterar pelos diretórios de locais e categoria de tempo e armazenar em uma matriz (local x tempo x condição) a quantidade 
+de imagens em cada uma das condições
+2. Para o conjunto de treinamento com os locais A e B, procurar o menor valor na matriz em suas linhas correspondentes. 
+Essa será a quantidade de imagens de cada combinação local x tempo x condição que serão inseridas no conjunto de treino.
+3. De acordo com o valor definido no passo 2, treinar o modelo com uma quantidade igual de vetores das diferentes 
+combinações de atributos.
+

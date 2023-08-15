@@ -15,6 +15,23 @@
 namespace pt = boost::property_tree;
 namespace fs = std::filesystem;
 
+enum pkSpaceClass {
+    CL_EMPTY,
+    CL_OCCUPIED
+};
+
+enum weather {
+    W_SUNNY,
+    W_OVERCAST,
+    W_RAINY
+};
+
+enum pkLot {
+    PK_PUCPR,
+    PK_UFPR4,
+    PK_UFPR5
+};
+
 void drawRect(cv::Mat &img, cv::Point2f points[]){
     for (int i = 0; i < 4; ++i)
             cv::line(img, points[i], points[(i+1)%4], cv::Scalar(0, 0, 255));
@@ -112,7 +129,6 @@ void segmentImgs(const std::string &src_path, const std::string &dest_path){
 }
 
 cv::Mat *getLBP(const cv::Mat &img){
-    // cv::Mat *lbp_img{new cv::Mat::zeros(cv::Size{img.size[0]-2, img.size[1]-2}, cv::CV_8UC1)};
     cv::Mat *lbp_img{ new cv::Mat{ cv::Mat::zeros(cv::Size(img.cols-2, img.rows-2), CV_8UC1)} };
 
     std::vector<int> seqi{-1,0,1,1,1,0,-1,-1};
@@ -130,18 +146,39 @@ cv::Mat *getLBP(const cv::Mat &img){
     return lbp_img;
 }
 
+void appendHistogram(std::ofstream &fout, const cv::Mat &lbpHist, pkSpaceClass cla, 
+    pkLot pla, weather w){
+    
+    for (int i = 0; i < lbpHist.size[0]; ++i) 
+        fout << lbpHist.at<unsigned int>(i) << ",";
+
+    fout << cla << "," << pla << "," << w << "\n";
+}
+
 int main(){
     // const std::string sample_img_path{"data/PKLot/MyPKLotSeg/PUCPR/Cloudy/2012-09-12/Empty/2012-09-12_06_05_16#001.jpg"};
     // const std::string sample_pklot_path{"data/PKLot/PKLot/PUCPR/Cloudy/2012-09-12/2012-09-12_06_05_16.jpg"}; 
     const std::string man{"data/samples/man.png"};
+    const std::string csvOut{"descriptors.csv"};
 
     cv::Mat sample_img{cv::imread(man)};
     cv::cvtColor(sample_img, sample_img, cv::COLOR_BGR2GRAY);
     
     cv::Mat *lbp{ getLBP(sample_img)};
 
-    cv::imshow("image", *lbp);
-    cv::waitKey(0);
+    const int histSize[] = {256};
+    const float histRange1[] = {0.0,256.0};
+    const float *histRange[] = {histRange1};
+    const int channels[] = {0};
+
+    cv::Mat lbpHist;
+    cv::calcHist(lbp, 1, channels, cv::Mat(), lbpHist, 1, histSize, histRange, true, false);
+
+    std::ofstream fout;
+    fout.open(csvOut);
+    appendHistogram(fout, lbpHist, CL_EMPTY, PK_UFPR5, W_SUNNY);
+    fout.close();
+
 
     delete lbp;
 
