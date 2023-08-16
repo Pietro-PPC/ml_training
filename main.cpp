@@ -11,26 +11,12 @@
 #include <boost/property_tree/xml_parser.hpp>
 #include <boost/property_tree/ptree.hpp>
 #include <boost/property_tree/exceptions.hpp>
+#include <boost/algorithm/string.hpp>
 
 namespace pt = boost::property_tree;
 namespace fs = std::filesystem;
 
-enum pkSpaceClass {
-    CL_EMPTY,
-    CL_OCCUPIED
-};
-
-enum weather {
-    W_SUNNY,
-    W_OVERCAST,
-    W_RAINY
-};
-
-enum pkLot {
-    PK_PUCPR,
-    PK_UFPR4,
-    PK_UFPR5
-};
+const int HIST_SIZE{256};
 
 void drawRect(cv::Mat &img, cv::Point2f points[]){
     for (int i = 0; i < 4; ++i)
@@ -146,13 +132,13 @@ cv::Mat *getLBP(const cv::Mat &img){
     return lbp_img;
 }
 
-void appendHistogram(std::ofstream &fout, const cv::Mat &lbpHist, pkSpaceClass cla, 
-    pkLot pla, weather w){
+void appendHistogram(std::ofstream &fout, const cv::Mat &lbpHist, int cla, 
+    const std::string &place, const std::string &w){
     
     for (int i = 0; i < lbpHist.size[0]; ++i) 
-        fout << lbpHist.at<int>(i) << ",";
+        fout << lbpHist.at<float>(i) << ";";
 
-    fout << cla << "," << pla << "," << w << "\n";
+    fout << cla << ";" << place << ";" << w << "\n";
 }
 
 void getHistogram(cv::Mat &hist, const cv::Mat &img){
@@ -161,39 +147,89 @@ void getHistogram(cv::Mat &hist, const cv::Mat &img){
     const float *histRange[] = {histRange1};
     const int channels[] = {0};
 
-    hist = cv::Mat::zeros(256, 1, CV_8UC1);
-    // std::cout << int(hist.at<unsigned short int>(2)) <<  " oi " << std::endl;
+    hist = cv::Mat::zeros(256, 1, CV_32FC1);
 
     cv::calcHist(&img, 1, channels, cv::Mat(), hist, 1, histSize, histRange, true, false);
-    // std::cout << int(hist.at<unsigned short int>(2)) <<  " oi " << std::endl;
+}
+
+void getHistograms(const fs::path &dsDir, const fs::path &csvOut){
+    std::ofstream fout;
+    fout.open(csvOut);
+
+    cv::Mat *lbp;
+    int i{1};
+    for (const auto &dirEnt : fs::recursive_directory_iterator(dsDir)){
+        if (fs::is_directory(dirEnt.path())) continue;
+        if (i % 1000 == 0) 
+            std::cout << "\rImages processed: " << i << std::flush;
+        
+        // get parking lot, weather condition and status of parking place
+        std::vector<std::string> spl;
+        boost::split(spl, dirEnt.path().string(), boost::is_any_of("/"));
+        std::string lugar{spl[3]};
+        std::string condicao{spl[4]};
+        std::string status{spl[6]};
+        int isOcc = (status == "Empty") ? 0 : 1;
+
+        // Read image, convert to lbp and append histogram to csv
+        cv::Mat img{cv::imread(dirEnt.path())};
+        cv::cvtColor(img, img, cv::COLOR_BGR2GRAY);
+        
+        cv::Mat lbpHist;
+        lbp = getLBP(img);
+
+        getHistogram(lbpHist, *lbp);
+        appendHistogram(fout, lbpHist, isOcc, lugar, condicao);
+
+        delete lbp;
+        i++;
+    }
+    std::cout << std::endl;
+
+    fout.close();
+
+}
+
+void splitTrainTest(const fs::path &csvPath, const fs::path &trainPath, const fs::path &testPath){
+    const std::string tstPklot{"UFPR05"};
+
+    std::ifstream csvFile{csvPath};
+    std::ofstream trainFile{trainPath};
+    std::ofstream testFile{testPath};
+    std::string ln;
+
+    std::vector<int> cntEmptyOcc{ {0,0} };
+    int i{0};
+    while (std::getline(csvFile, ln) ){
+        if (i % 1000 == 0)  std::cout << "\rLines processed: " << i << std::flush;
+        std::vector<std::string> spl;
+        boost::split(spl, ln, boost::is_any_of(";"));
+        
+        std::vector<double> histogram(256);
+        for (int it{0}; it < HIST_SIZE; ++it)
+            histogram[it] = stod(spl[it]);
+        cv::normalize (histogram, histogram, 1.0, 0.0, cv::NORM_MINMAX);
+
+        std::ofstream &output = ( spl[spl.size()-2] != tstPklot) ? trainFile : testFile;
+        
+        for (int it{0}; it < HIST_SIZE; ++it)
+            output << histogram[it] << ";" ;
+        output << spl[spl.size()-3] << "\n";
+
+        i++;
+    }
+    std::cout << std::endl;
+
 }
 
 int main(){
-    // const std::string sample_img_path{"data/PKLot/MyPKLotSeg/PUCPR/Cloudy/2012-09-12/Empty/2012-09-12_06_05_16#001.jpg"};
-    // const std::string sample_pklot_path{"data/PKLot/PKLot/PUCPR/Cloudy/2012-09-12/2012-09-12_06_05_16.jpg"}; 
-    const std::string man{"data/samples/man.png"};
-    const std::string csvOut{"descriptors.csv"};
+    // get train and test data
 
-    cv::Mat sample_img{cv::imread(man)};
-    cv::cvtColor(sample_img, sample_img, cv::COLOR_BGR2GRAY);
-    
-    cv::Mat lbpHist;
-    cv::Mat *lbp{ getLBP(sample_img)};
+    const fs::path csvPath{"data/descriptors.csv"};
+    const fs::path trnPath{"data/trainSet.csv"};
+    const fs::path tstPath{"data/testSet.csv"};
 
-    cv::imshow("lbp", *lbp);
-    cv::waitKey(0);
-
-    getHistogram(lbpHist, *lbp);
-
-    std::cout << lbpHist << std::endl;
-
-    std::ofstream fout;
-    fout.open(csvOut);
-    appendHistogram(fout, lbpHist, CL_EMPTY, PK_UFPR5, W_SUNNY);
-    fout.close();
-
-
-    delete lbp;
+    splitTrainTest(csvPath, trnPath, tstPath);
 
     return 0;
 }
