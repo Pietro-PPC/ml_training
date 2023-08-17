@@ -4,6 +4,8 @@
 #include <fstream>
 #include <format>
 
+#include <omp.h>
+
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/highgui.hpp>
 #include <opencv2/opencv.hpp>
@@ -12,6 +14,8 @@
 #include <boost/property_tree/ptree.hpp>
 #include <boost/property_tree/exceptions.hpp>
 #include <boost/algorithm/string.hpp>
+
+#include "knn/knn.hpp"
 
 namespace pt = boost::property_tree;
 namespace fs = std::filesystem;
@@ -87,6 +91,7 @@ void segmentImgs(const std::string &src_path, const std::string &dest_path){
                 occ = parking_it->second.get<int>("<xmlattr>.occupied");
             } catch(pt::ptree_error &exc){
                 std::cerr << "id " << id << " of " << xml_input << " not processed\n"; // for now, segments without occupied attribute are ignored
+                continue;
             }
 
             cv::RotatedRect rotRect;
@@ -120,8 +125,8 @@ cv::Mat *getLBP(const cv::Mat &img){
     std::vector<int> seqi{-1,0,1,1,1,0,-1,-1};
     std::vector<int> seqj{1,1,1,0,-1,-1,-1,0};
 
-    for (unsigned int i{1}; i < img.size[0]-1; ++i){
-        for (unsigned int j{1}; j < img.size[1]-1; ++j){
+    for (int i{1}; i < img.size[0]-1; ++i){
+        for (int j{1}; j < img.size[1]-1; ++j){
             unsigned char lbp{0};
             for (unsigned int k = 0; k < seqi.size(); ++k)
                 lbp |= ( img.at<uchar>(i,j) >= img.at<uchar>(i+seqi[k],j+seqj[k]) ? 1 : 0 ) << k;
@@ -218,18 +223,86 @@ void splitTrainTest(const fs::path &csvPath, const fs::path &trainPath, const fs
 
         i++;
     }
-    std::cout << std::endl;
+    std::cout << "\rLines processed: " << i << std::flush;
 
 }
 
+void extractCsvData(std::vector< std::pair<std::vector<double>,int> > &data, const fs::path csvPath, bool verbose=true){
+    std::ifstream csvStream{csvPath};
+    std::string ln;
+    // build data vector
+    int i{0};
+    while (std::getline(csvStream, ln) ){
+        if (verbose && i % 10000 == 0)  std::cout << "\rLines processed: " << i << std::flush;
+        std::vector<std::string> spl;
+        boost::split(spl, ln, boost::is_any_of(";"));
+        
+        std::vector<double> curData;
+        for (unsigned int it{0}; it < spl.size()-1; ++it)
+            curData.push_back( stod(spl[it]) );
+        
+        data.emplace_back(curData, stoi(spl[ spl.size()-1 ]));
+        i++;
+        // if (i >= 10000) break;
+    }
+    if (verbose) std::cout << "\rLines processed: " << i << std::endl;
+
+    csvStream.close();
+}
+
+const int THREAD_NUM = 8;
 int main(){
-    // get train and test data
 
-    const fs::path csvPath{"data/descriptors.csv"};
-    const fs::path trnPath{"data/trainSet.csv"};
-    const fs::path tstPath{"data/testSet.csv"};
+    fs::path trnPath{"data/trainSet.csv"};
+    fs::path tstPath{"data/testSet.csv"};
+    
+    std::vector< std::pair<std::vector<double>, int> > trnData, tstData;
 
-    splitTrainTest(csvPath, trnPath, tstPath);
+    std::cout << "Extracting CSV data from " << trnPath << "..." << std::endl;
+    extractCsvData(trnData, trnPath);
+    std::cout << "Extraction finished." << std::endl;
 
+    knn classifier;
+    std::cout << "Training classifier..." << std::flush;
+    classifier.train(trnData);
+    std::cout << " done\n" << std::endl;
+
+    std::cout << "Extracting CSV data from " << tstPath << "..." << std::endl;
+    extractCsvData(tstData, tstPath);
+    std::cout << "Extraction finished.\n" << std::endl;
+
+    std::cout << "Fitting testing set to model..." << std::endl;
+    std::vector<int> confMatrix(4, 0);
+    int *confMatrixPtr = &confMatrix[0];
+    std::vector< std::pair<std::vector<double>, int> > tstSubset(&tstData[0], &tstData[0] + 20000);
+
+    int progress = 0;
+    int step = 20;
+    int sz = tstSubset.size();
+
+    omp_set_num_threads(THREAD_NUM);
+    #pragma omp parallel for reduction(+:confMatrixPtr[:4])
+    for (int i =0; i<sz; ++i){
+        std::pair<std::vector<double>, int> &dpair = tstSubset[i];
+        int pred = classifier.fit(dpair.first, 3);
+        confMatrixPtr[dpair.second*2 + pred]++;
+
+        if (i%step == 0){
+            #pragma omp critical
+            {
+                std::cout << "\r" << (++progress)*step << "/" << sz << std::flush;
+            }
+        }
+    }
+    
+    std::cout << "\nFitting finished!" << std::endl;
+
+    std::cout << "\nHere are your results\n";
+    for (int i{0}; i < 2; ++i){
+        for (int j{0}; j < 2; ++j)
+            std::cout << std::setw(6) << confMatrix[i*2 + j] << " ";
+        std::cout << "\n";
+    }
+    
     return 0;
 }
