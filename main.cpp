@@ -274,7 +274,8 @@ int main(){
     std::cout << "Fitting testing set to model..." << std::endl;
     std::vector<int> confMatrix(4, 0);
     int *confMatrixPtr = &confMatrix[0];
-    std::vector< std::pair<std::vector<double>, int> > tstSubset(&tstData[0], &tstData[0] + 20000);
+    // std::vector< std::pair<std::vector<double>, int> > tstSubset(&tstData[0], &tstData[0] + 20000);
+    std::vector< std::pair<std::vector<double>, int> > tstSubset(tstData.begin(), tstData.end());
 
     int progress = 0;
     int step = 20;
