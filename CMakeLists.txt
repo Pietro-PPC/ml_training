@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.27)
+cmake_minimum_required(VERSION 3.25)
 project( ml_training )
 find_package( OpenCV REQUIRED )
 include_directories( ${OpenCV_INCLUDE_DIRS} )
@@ -14,6 +14,5 @@ if(OpenMP_CXX_FOUND)
 endif()
 
 target_include_directories(main PUBLIC "./knn")
-set_property(TARGET main PROPERTY CXX_STANDARD 20)
 
-set(CMAKE_CXX_FLAGS "-Wall -Wextra -O2")
+set(CMAKE_CXX_FLAGS "-Wall -Wextra -O2 --std=c++20")

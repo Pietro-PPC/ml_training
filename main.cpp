@@ -2,7 +2,6 @@
 #include <string>
 #include <filesystem>
 #include <fstream>
-#include <format>
 
 #include <omp.h>
 
@@ -20,6 +19,7 @@
 namespace pt = boost::property_tree;
 namespace fs = std::filesystem;
 
+const int THREAD_NUM = 1; // set this to preferred number of threads to use in KNN
 const int HIST_SIZE{256};
 
 void drawRect(cv::Mat &img, cv::Point2f points[]){
@@ -49,10 +49,18 @@ void cropRotatedRect(const cv::Mat &img, cv::Mat &croppedImg, const cv::RotatedR
     cv::warpPerspective(img, croppedImg, pt, newSize);
 }
 
+std::string leadingZeroes(int num, int nspaces){
+    int div = pow(10, nspaces);
+    std::string ret;
+
+    for (; div > 0; div /= 10)
+        ret += std::to_string( (num/div) % 10 );
+    return ret;
+}
 void segmentImgs(const std::string &src_path, const std::string &dest_path){
+    std::cout << "Images segmented: 0" << std::flush;
 
-    // ofstream logFile("logs.txt");
-
+    int i{0};
     for (const auto &dirEnt : fs::recursive_directory_iterator(src_path)){
         if (fs::is_directory(dirEnt) || dirEnt.path().extension() != ".jpg") continue;
 
@@ -76,7 +84,7 @@ void segmentImgs(const std::string &src_path, const std::string &dest_path){
         pt::ptree tree;
 
         if (!fs::exists(xml_input)){
-            std::cout << "File " << xml_input << " not found." << std::endl;
+            std::cout << "\nFile " << xml_input << " not found." << std::endl;
             continue;
         }
         read_xml(xml_input, tree);
@@ -90,7 +98,7 @@ void segmentImgs(const std::string &src_path, const std::string &dest_path){
             try{
                 occ = parking_it->second.get<int>("<xmlattr>.occupied");
             } catch(pt::ptree_error &exc){
-                std::cerr << "id " << id << " of " << xml_input << " not processed\n"; // for now, segments without occupied attribute are ignored
+                //std::cerr << "id " << id << " of " << xml_input << " not processed\n"; // for now, segments without occupied attribute are ignored
                 continue;
             }
 
@@ -111,12 +119,15 @@ void segmentImgs(const std::string &src_path, const std::string &dest_path){
             
             std::string fPath = dest_path + cur_dir;
             fPath += occ ? "Occupied/" : "Empty/";
-            fPath += file_pref + "#" + std::format("{:03}",id) + ".jpg";
+            fPath += file_pref + "#" + leadingZeroes(id,3) + ".jpg";
 
             cv::imwrite(fPath, cropped_img);
+            i++;
+            if (i%1000 == 0)
+                std::cout << "\rImages segmented: " << i << std::flush;
         }
     }
-
+    std::cout << "\rImages segmented: " << i << std::endl;
 }
 
 cv::Mat *getLBP(const cv::Mat &img){
@@ -161,12 +172,12 @@ void getHistograms(const fs::path &dsDir, const fs::path &csvOut){
     std::ofstream fout;
     fout.open(csvOut);
 
+    std::cout << "\rImages processed: 0" << std::flush;
+
     cv::Mat *lbp;
     int i{1};
     for (const auto &dirEnt : fs::recursive_directory_iterator(dsDir)){
         if (fs::is_directory(dirEnt.path())) continue;
-        if (i % 1000 == 0) 
-            std::cout << "\rImages processed: " << i << std::flush;
         
         // get parking lot, weather condition and status of parking place
         std::vector<std::string> spl;
@@ -188,11 +199,12 @@ void getHistograms(const fs::path &dsDir, const fs::path &csvOut){
 
         delete lbp;
         i++;
+        if (i % 1000 == 0) 
+            std::cout << "\rImages processed: " << i << std::flush;
     }
-    std::cout << std::endl;
+    std::cout << "\rImages processed: " << i << std::endl;
 
     fout.close();
-
 }
 
 void splitTrainTest(const fs::path &csvPath, const fs::path &trainPath, const fs::path &testPath){
@@ -204,9 +216,11 @@ void splitTrainTest(const fs::path &csvPath, const fs::path &trainPath, const fs
     std::string ln;
 
     std::vector<int> cntEmptyOcc{ {0,0} };
+
+    std::cout << "\rLines processed: 0" << std::flush;
+    
     int i{0};
     while (std::getline(csvFile, ln) ){
-        if (i % 1000 == 0)  std::cout << "\rLines processed: " << i << std::flush;
         std::vector<std::string> spl;
         boost::split(spl, ln, boost::is_any_of(";"));
         
@@ -222,8 +236,9 @@ void splitTrainTest(const fs::path &csvPath, const fs::path &trainPath, const fs
         output << spl[spl.size()-3] << "\n";
 
         i++;
+        if (i % 1000 == 0)  std::cout << "\rLines processed: " << i << std::flush;
     }
-    std::cout << "\rLines processed: " << i << std::flush;
+    std::cout << "\rLines processed: " << i << std::endl;
 
 }
 
@@ -250,26 +265,41 @@ void extractCsvData(std::vector< std::pair<std::vector<double>,int> > &data, con
     csvStream.close();
 }
 
-const int THREAD_NUM = 8;
 int main(){
+    omp_set_num_threads(THREAD_NUM);
 
-    fs::path trnPath{"data/trainSet.csv"};
-    fs::path tstPath{"data/testSet.csv"};
-    
+    const fs::path dataPath{"data"};
+    const fs::path srcPath{dataPath / "PKLot/PKLot"};
+    const fs::path dstPath{dataPath / "PKLot/MyPKLotSeg"};
+    const fs::path dataCsv{dataPath / "characteristics.csv"};
+    const fs::path trnCsv{dataPath / "train.csv"};
+    const fs::path tstCsv{dataPath / "test.csv"};
+
+    std::cout << "Segmenting images..." << std::endl;
+    segmentImgs(srcPath, dstPath);
+    std::cout << "Finished!\n" << std::endl;
+
+    std::cout << "Calculating image histograms..." << std::endl;
+    getHistograms(dstPath, dataCsv);
+    std::cout << "Finished!\n" << std::endl;
+
+    std::cout << "Generating training and testing sets..." << std::endl;
+    splitTrainTest(dataCsv, trnCsv, tstCsv);
+    std::cout << "Finished!\n" << std::endl;
+
     std::vector< std::pair<std::vector<double>, int> > trnData, tstData;
-
-    std::cout << "Extracting CSV data from " << trnPath << "..." << std::endl;
-    extractCsvData(trnData, trnPath);
-    std::cout << "Extraction finished." << std::endl;
+    std::cout << "Extracting CSV data from " << trnCsv << "..." << std::endl;
+    extractCsvData(trnData, trnCsv);
+    std::cout << "Finished!\n" << std::endl;
 
     knn classifier;
     std::cout << "Training classifier..." << std::flush;
     classifier.train(trnData);
     std::cout << " done\n" << std::endl;
 
-    std::cout << "Extracting CSV data from " << tstPath << "..." << std::endl;
-    extractCsvData(tstData, tstPath);
-    std::cout << "Extraction finished.\n" << std::endl;
+    std::cout << "Extracting CSV data from " << tstCsv << "..." << std::endl;
+    extractCsvData(tstData, tstCsv);
+    std::cout << "Finished!\n" << std::endl;
 
     std::cout << "Fitting testing set to model..." << std::endl;
     std::vector<int> confMatrix(4, 0);
@@ -281,14 +311,14 @@ int main(){
     int step = 20;
     int sz = tstSubset.size();
 
-    omp_set_num_threads(THREAD_NUM);
+    std::cout << "\r" << "0/" << sz << std::flush;
     #pragma omp parallel for reduction(+:confMatrixPtr[:4])
     for (int i =0; i<sz; ++i){
         std::pair<std::vector<double>, int> &dpair = tstSubset[i];
         int pred = classifier.fit(dpair.first, 3);
         confMatrixPtr[dpair.second*2 + pred]++;
 
-        if (i%step == 0){
+        if (i%step == step-1){
             #pragma omp critical
             {
                 std::cout << "\r" << (++progress)*step << "/" << sz << std::flush;
